@@ -530,7 +530,7 @@ func TestFetchTransactions_Integration(t *testing.T) {
 		var result interface{}
 
 		switch req.Method {
-		case "eth_chainID":
+		case "eth_chainId":
 			result = "0x1" // Chain ID 1
 		case "eth_getBlockByNumber":
 			isFull, _ := req.Params[1].(bool)
@@ -624,6 +624,78 @@ func TestFetchTransactions_Integration(t *testing.T) {
 	}
 	if tx.GasPrice != "20.00 Gwei" {
 		t.Errorf("Expected gas price '20.00 Gwei', got '%s'", tx.GasPrice)
+	}
+}
+
+func TestFetchTransactions_Empty(t *testing.T) {
+	targetAddress := "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int           `json:"id"`
+			Method string        `json:"method"`
+			Params []interface{} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		var result interface{}
+
+		switch req.Method {
+		case "eth_chainId":
+			result = "0x1" // Chain ID 1
+		case "eth_getBlockByNumber":
+			// Return a block with no transactions
+			result = map[string]interface{}{
+				"number":           "0x1000",
+				"hash":             "0x0000000000000000000000000000000000000000000000000000000000000001",
+				"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000002",
+				"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+				"timestamp":        "0x5f5e1000",
+				"miner":            "0x0000000000000000000000000000000000000000",
+				"gasLimit":         "0x1",
+				"gasUsed":          "0x0",
+				"difficulty":       "0x0",
+				"extraData":        "0x",
+				"mixHash":          "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"nonce":            "0x0000000000000000",
+				"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+				"logsBloom":        "0x" + strings.Repeat("00", 256),
+				"transactions":     []interface{}{},
+			}
+		default:
+			result = "0x0"
+		}
+
+		resp := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result":  result,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// Execute
+	cmd := fetchTransactions(targetAddress, []string{server.URL}, 4)
+	msg := cmd()
+
+	// Assert
+	txsMsg, ok := msg.(txsMsg)
+	if !ok {
+		t.Fatalf("Expected txsMsg, got %T", msg)
+	}
+
+	if txsMsg.err != nil {
+		t.Fatalf("fetchTransactions returned error: %v", txsMsg.err)
+	}
+
+	if len(txsMsg.txs) != 0 {
+		t.Errorf("Expected 0 transactions, got %d", len(txsMsg.txs))
 	}
 }
 
@@ -923,5 +995,71 @@ func TestLoadConfig_LegacyMigration(t *testing.T) {
 
 	if idx != 0 {
 		t.Errorf("Expected selected index 0, got %d", idx)
+	}
+}
+
+func TestFetchChainData_Timeout(t *testing.T) {
+	// Override timeout for test
+	origTimeout := chainDataTimeout
+	chainDataTimeout = 10 * time.Millisecond
+	defer func() { chainDataTimeout = origTimeout }()
+
+	// Mock Server that sleeps longer than timeout
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	chain := ChainConfig{
+		Name:    "TimeoutChain",
+		RPCURLs: []string{server.URL},
+	}
+	accounts := []*accountState{{address: "0x123"}}
+
+	cmd := fetchChainData(chain, accounts)
+	msg := cmd()
+
+	dMsg, ok := msg.(chainDataMsg)
+	if !ok {
+		t.Fatalf("Expected chainDataMsg, got %T", msg)
+	}
+
+	if dMsg.err == nil {
+		t.Error("Expected error due to timeout, got nil")
+	}
+	if len(dMsg.failedRPCs) == 0 {
+		t.Error("Expected failedRPCs to be populated")
+	}
+}
+
+func TestFetchChainData_RateLimit(t *testing.T) {
+	// Mock Server that returns 429 Too Many Requests
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	chain := ChainConfig{
+		Name:    "RateLimitChain",
+		RPCURLs: []string{server.URL},
+	}
+	accounts := []*accountState{{address: "0x123"}}
+
+	// Execute
+	cmd := fetchChainData(chain, accounts)
+	msg := cmd()
+
+	// Assert
+	dMsg, ok := msg.(chainDataMsg)
+	if !ok {
+		t.Fatalf("Expected chainDataMsg, got %T", msg)
+	}
+
+	if dMsg.err == nil {
+		t.Error("Expected error due to rate limiting, got nil")
+	}
+	if len(dMsg.failedRPCs) != 1 || dMsg.failedRPCs[0] != server.URL {
+		t.Errorf("Expected failed RPC to be recorded, got %v", dMsg.failedRPCs)
 	}
 }

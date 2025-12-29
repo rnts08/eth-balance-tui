@@ -37,6 +37,7 @@ import (
 var Version = "dev"
 
 var coinGeckoBaseURL = "https://api.coingecko.com/api/v3"
+var chainDataTimeout = 30 * time.Second
 
 // --- Styles ---
 var (
@@ -2665,7 +2666,7 @@ func fetchChainData(chain ChainConfig, accounts []*accountState) tea.Cmd {
 			}
 
 			// Create a context with longer timeout for batch
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), chainDataTimeout)
 
 			client, err := ethclient.Dial(rpcURL)
 			if err != nil {
