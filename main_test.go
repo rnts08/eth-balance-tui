@@ -287,7 +287,7 @@ func TestFetchChainData_Integration(t *testing.T) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -346,7 +346,7 @@ func TestFetchGasPrice_Integration(t *testing.T) {
 			"id":      1,
 			"result":  "0x4a817c800", // 20 Gwei (20 * 10^9 = 20,000,000,000)
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -375,7 +375,7 @@ func TestFetchEthPrice_Integration(t *testing.T) {
 		response := map[string]map[string]float64{
 			"ethereum": {"usd": 2500.50},
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -912,7 +912,7 @@ func TestSaveConfig_PermissionError(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Ensure we restore permissions so cleanup works
-	defer os.Chmod(tmpDir, 0700)
+	defer func() { _ = os.Chmod(tmpDir, 0700) }()
 
 	configPath := filepath.Join(tmpDir, "config.json")
 
@@ -1269,14 +1269,14 @@ func TestSubscribeToNewHeads(t *testing.T) {
 			method, _ := msg["method"].(string)
 			if method == "eth_subscribe" {
 				// 1. Send Subscription ID
-				c.WriteJSON(map[string]interface{}{
+				_ = c.WriteJSON(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      msg["id"],
 					"result":  "0x123456",
 				})
 
 				// 2. Send Notification (New Head)
-				c.WriteJSON(map[string]interface{}{
+				_ = c.WriteJSON(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"method":  "eth_subscription",
 					"params": map[string]interface{}{

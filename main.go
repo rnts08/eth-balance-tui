@@ -437,7 +437,6 @@ func (m model) Init() tea.Cmd {
 
 	if m.config.AutoCycleEnabled && m.config.AutoCycleIntervalSeconds > 0 {
 		interval := time.Duration(m.config.AutoCycleIntervalSeconds) * time.Second
-		m.nextAutoCycleTime = time.Now().Add(interval)
 		cmds = append(cmds, tea.Tick(interval, func(t time.Time) tea.Msg {
 			return autoCycleMsg{}
 		}))
@@ -1045,7 +1044,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.tokenListIdx >= len(m.chains[m.selectedChainForTokens].Tokens) {
 						m.tokenListIdx = len(m.chains[m.selectedChainForTokens].Tokens) - 1
 					}
-					// Save config logic omitted for brevity, ideally should save here too
+					var allAddrs []AddressConfig
+					for _, acc := range m.accounts {
+						allAddrs = append(allAddrs, AddressConfig{Address: acc.address, Name: acc.name})
+					}
+					if err := saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath); err != nil {
+						m.statusMessage = "Failed to save config"
+					}
 				}
 			}
 			return m, nil
@@ -1084,7 +1089,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for _, acc := range m.accounts {
 						allAddrs = append(allAddrs, AddressConfig{Address: acc.address, Name: acc.name})
 					}
-					saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath)
+					if err := saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath); err != nil {
+						m.statusMessage = "Failed to save config"
+					}
 				}
 			case "t":
 				if len(m.chains) > 0 {
@@ -1328,7 +1335,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for _, acc := range m.accounts {
 					allAddrs = append(allAddrs, AddressConfig{Address: acc.address, Name: acc.name})
 				}
-				saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath)
+				if err := saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath); err != nil {
+					m.statusMessage = "Failed to save config"
+				}
 				// Trigger refresh for new chain
 				return m, tea.Batch(fetchTransactions(m.accounts[m.activeIdx].address, m.getPrioritizedRPCs(m.chains[m.activeChainIdx].RPCURLs), m.config.TokenDecimals), fetchGasPrice(m.getPrioritizedRPCs(m.chains[m.activeChainIdx].RPCURLs)))
 			}
@@ -1831,7 +1840,6 @@ func (m model) View() string {
 	if m.gasPrice != nil {
 		gwei := new(big.Float).Quo(new(big.Float).SetInt(m.gasPrice), big.NewFloat(1e9))
 		val, _ := gwei.Float64()
-		gasDisplay = fmt.Sprintf("Gas: %.0f Gwei", val)
 		gasDisplay = fmt.Sprintf("Gas: %.2f Gwei", val)
 		if m.gasTrend > 0 {
 			gasDisplay += " ↑"
@@ -1994,7 +2002,7 @@ func (m model) View() string {
 			)
 		}
 
-		content = boxStyle.Copy().Width(targetWidth).Align(lipgloss.Center).Render(uiBlock)
+		content = boxStyle.Width(targetWidth).Align(lipgloss.Center).Render(uiBlock)
 	}
 
 	// Footer
@@ -2011,8 +2019,8 @@ func (m model) View() string {
 
 	var footer string
 	if m.width > 0 {
-		l1 := subtleStyle.Copy().Width(m.width).Align(lipgloss.Center).Render(line1)
-		l2 := subtleStyle.Copy().Width(m.width).Align(lipgloss.Center).Render(line2)
+		l1 := subtleStyle.Width(m.width).Align(lipgloss.Center).Render(line1)
+		l2 := subtleStyle.Width(m.width).Align(lipgloss.Center).Render(line2)
 		footer = lipgloss.JoinVertical(lipgloss.Center, l1, l2)
 	} else {
 		footer = subtleStyle.Render(line1 + "\n" + line2)
@@ -2244,7 +2252,7 @@ func (m model) viewGasTracker() string {
 		graph = "Not enough data to draw graph."
 	}
 
-	content := boxStyle.Copy().Width(targetBoxWidth).Align(lipgloss.Center).Render(lipgloss.JoinVertical(lipgloss.Center, header, "\n", stats, "\n", graph))
+	content := boxStyle.Width(targetBoxWidth).Align(lipgloss.Center).Render(lipgloss.JoinVertical(lipgloss.Center, header, "\n", stats, "\n", graph))
 	footer := subtleStyle.Render("G/q/esc: back • r: refresh • </>: change range")
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, lipgloss.JoinVertical(lipgloss.Center, content, "\n", footer))
@@ -3372,7 +3380,7 @@ func main() {
 			} else {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				enc.Encode(report)
+				_ = enc.Encode(report)
 			}
 			os.Exit(1)
 		}
@@ -3401,7 +3409,7 @@ func main() {
 			if *jsonFlag {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				enc.Encode(report)
+				_ = enc.Encode(report)
 			}
 			os.Exit(1)
 		}
@@ -3540,7 +3548,7 @@ func main() {
 		if *jsonFlag {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(report)
+			_ = enc.Encode(report)
 		}
 		os.Exit(0)
 	}
