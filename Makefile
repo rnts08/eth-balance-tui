@@ -11,13 +11,13 @@ GORUN=$(GOCMD) run
 BINARY_NAME=eth-balance-tui
 
 # Build flags
-LDFLAGS = -ldflags="-s -w -buildid="
+LDFLAGS = -ldflags="-s -w -buildid= -X main.Version=$(VERSION)"
 BUILDFLAGS = -trimpath $(LDFLAGS)
 
 # Release version - can be overridden e.g. `make release VERSION=v1.0.0`
-VERSION ?= dev
+VERSION ?= $(shell cat VERSION | tr -d '[:space:]')
 
-.PHONY: all build run clean test fmt vet help cross-compile release
+.PHONY: all build run clean test unittest fmt vet help cross-compile release bump
 
 all: build
 
@@ -62,6 +62,16 @@ test:
 	@echo "Running configuration test..."
 	@$(GORUN) . -test
 
+# Run unit tests
+unittest:
+	@echo "Running unit tests..."
+	@$(GOTEST) ./...
+
+# Bump version (usage: make bump part=patch)
+bump:
+	@chmod +x bump_version.sh
+	@./bump_version.sh $(part)
+
 # Clean the binary and dist folder
 clean:
 	@echo "Cleaning..."
@@ -90,6 +100,8 @@ help:
 	@echo "  release        Build and create compressed release archives in ./dist"
 	@echo "  run            Build and run the application"
 	@echo "  test           Run the configuration test mode"
+	@echo "  unittest       Run unit tests"
+	@echo "  bump part=...  Bump version (major, minor, patch), commit, and push tag"
 	@echo "  clean          Remove the built binary and dist directory"
 	@echo "  fmt            Format the source code"
 	@echo "  vet            Run go vet to check for issues"

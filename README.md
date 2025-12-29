@@ -1,10 +1,15 @@
 # ETH Balance TUI
 
 A comprehensive, terminal-based UI for monitoring balances and transactions on Ethereum and other EVM-compatible chains.
+A terminal user interface for tracking Ethereum and EVM chain balances.
 
 ![Screenshot](https://user-images.githubusercontent.com/12345/screenshot.png) <!-- Placeholder for screenshot -->
+## Development
 
 ## Features
+### Prerequisites
+- Go 1.21+
+- Make
 
 *   **Multi-Address & Multi-Chain:** Monitor multiple wallet addresses across various configured EVM chains.
 *   **Real-time Data:** Fetches native currency and ERC-20 token balances, USD values (via CoinGecko), and current gas prices.
@@ -30,8 +35,9 @@ A comprehensive, terminal-based UI for monitoring balances and transactions on E
 
 Ensure you have Go and `make` installed. A `Makefile` is provided to simplify common tasks.
 
+### Building
 ```bash
-git clone https://github.com/user/eth-balance-tui.git
+git clone https://github.com/rnts08/eth-balance-tui.git
 cd eth-balance-tui
 make build
 ```
@@ -43,25 +49,35 @@ make build
 
 ### Running the Application
 
+### Running
 ```bash
 ./eth-balance-tui
+make run
 ```
 
 Or with a custom config path:
+## Release Management
 
 ```bash
 ./eth-balance-tui -config /path/to/your/config.json
 ```
+This project uses Semantic Versioning (Major.Minor.Patch).
 
 ### Testing the Configuration
+### Bumping Version
+To create a new release, ensure your working directory is clean (no uncommitted changes), then run one of the following commands:
 
 You can validate your `config.json` file, test RPC connectivity, and automatically populate missing `chain_id` fields by running the application with the `-test` flag.
 
 ```bash
 ./eth-balance-tui -test
 ```
+# Bump patch version (e.g., 1.0.0 -> 1.0.1)
+make bump part=patch
 
 ## Configuration (`config.json`)
+# Bump minor version (e.g., 1.0.0 -> 1.1.0)
+make bump part=minor
 
 The application is configured using a JSON file. Here is an example structure:
 
@@ -104,6 +120,8 @@ The application is configured using a JSON file. Here is an example structure:
   "auto_cycle_enabled": false,
   "auto_cycle_interval_seconds": 15
 }
+# Bump major version (e.g., 1.0.0 -> 2.0.0)
+make bump part=major
 ```
 
 *   **`addresses`**: A list of wallet addresses to monitor. The `name` field is an optional tag.
@@ -121,6 +139,12 @@ The application is configured using a JSON file. Here is an example structure:
 *   **`token_decimals`**: Number of decimal places to show for token and native currency balances.
 *   **`auto_cycle_enabled`**: Set to `true` to automatically cycle through addresses.
 *   **`auto_cycle_interval_seconds`**: The delay between each address switch when auto-cycle is enabled.
+This command will:
+1. Verify the working directory is clean.
+2. Increment the version number in the `VERSION` file.
+3. Commit the change.
+4. Create a git tag (e.g., `v1.0.1`).
+5. Push the commit and the tag to the remote repository.
 
 ## Keybindings
 
@@ -216,3 +240,10 @@ This project is open source and available under the GNU License.
 ***SOL:*** 68L4XzSbRUaNE4UnxEd8DweSWEoiMQi6uygzERZLbXDw
 
 ***BTC:*** bc1qkmzc6d49fl0edyeynezwlrfqv486nmk6p5pmta
+
+### Automated Release
+Pushing the tag triggers a GitHub Action workflow that:
+1. Runs unit tests and configuration tests.
+2. Verifies the tag matches the `VERSION` file.
+3. Cross-compiles binaries for Linux, Windows, and macOS.
+4. Creates a GitHub Release with the binaries and an automatically generated changelog.

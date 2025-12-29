@@ -32,6 +32,9 @@ import (
 	"github.com/guptarohit/asciigraph"
 )
 
+// Version is injected at build time via -ldflags
+var Version = "dev"
+
 // --- Styles ---
 var (
 	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
@@ -2000,6 +2003,7 @@ func (m model) View() string {
 	if len(m.chains) > 1 {
 		line2 += " • n:nxt"
 	}
+	line2 += fmt.Sprintf(" • v%s", Version)
 
 	var footer string
 	if m.width > 0 {
@@ -3038,10 +3042,13 @@ func fetchRPCLatency(rpcURL string) tea.Cmd {
 }
 
 func truncateString(str string, num int) string {
-	if len(str) > num {
-		return str[0:num-3] + "..."
+	if len(str) <= num {
+		return str
 	}
-	return str
+	if num <= 3 {
+		return str[:num]
+	}
+	return str[0:num-3] + "..."
 }
 
 func addCommas(s string) string {
@@ -3304,7 +3311,13 @@ func main() {
 	jsonFlag := flag.Bool("json", false, "Output test results as JSON")
 	dryRunFlag := flag.Bool("dry-run", false, "Perform a trial run with no changes made")
 	configFlag := flag.String("config", "", "Path to configuration file")
+	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("eth-balance-tui version %s\n", Version)
+		os.Exit(0)
+	}
 
 	cfgInput := *configFlag
 	if cfgInput == "" && len(flag.Args()) > 0 {
