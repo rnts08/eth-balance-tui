@@ -946,7 +946,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						for _, acc := range m.accounts {
 							allAddrs = append(allAddrs, AddressConfig{Address: acc.address, Name: acc.name})
 						}
-						saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath)
+						if err := saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath); err != nil {
+							m.statusMessage = "Failed to save config"
+						}
 
 						// Fetch data for chain again to include new token
 						chain := m.chains[m.selectedChainForTokens]
@@ -1002,7 +1004,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						for _, acc := range m.accounts {
 							allAddrs = append(allAddrs, AddressConfig{Address: acc.address, Name: acc.name})
 						}
-						saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath)
+						if err := saveConfig(allAddrs, m.chains, m.activeChainIdx, m.config, m.configPath); err != nil {
+							m.statusMessage = "Failed to save config"
+						}
 					}
 					m.addingChain = false
 					m.chainInputIdx = 0

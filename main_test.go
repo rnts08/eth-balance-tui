@@ -478,7 +478,7 @@ func TestFetchChainData_RPCFailover(t *testing.T) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer goodServer.Close()
 
@@ -621,7 +621,7 @@ func TestFetchTransactions_Integration(t *testing.T) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -710,7 +710,7 @@ func TestFetchTransactions_Empty(t *testing.T) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
