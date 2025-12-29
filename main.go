@@ -2818,6 +2818,15 @@ func fetchTokenBalanceInternal(ctx context.Context, client *ethclient.Client, to
 	return fBal, nil
 }
 
+// subscribeToNewHeads connects to a WebSocket RPC and subscribes to new block headers.
+func subscribeToNewHeads(ctx context.Context, rpcURL string, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubscribeNewHead(ctx, ch)
+}
+
 // fetchTransactions scans the latest blocks for transactions involving the address.
 func fetchTransactions(addressHex string, rpcURLs []string, tokenDecimals int) tea.Cmd {
 	return func() tea.Msg {

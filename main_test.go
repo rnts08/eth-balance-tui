@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gorilla/websocket"
 )
 
 func TestTruncateString(t *testing.T) {
@@ -1093,5 +1095,235 @@ func TestFetchChainData_RateLimit(t *testing.T) {
 	}
 	if len(dMsg.failedRPCs) != 1 || dMsg.failedRPCs[0] != server.URL {
 		t.Errorf("Expected failed RPC to be recorded, got %v", dMsg.failedRPCs)
+	}
+}
+
+func TestFetchTransactions_Reorg(t *testing.T) {
+	// Generate valid tx for signature verification
+	key, _ := crypto.GenerateKey()
+	fromAddr := crypto.PubkeyToAddress(key.PublicKey)
+	fromAddress := fromAddr.Hex()
+
+	targetAddr := common.HexToAddress("0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")
+	targetAddress := targetAddr.Hex()
+
+	// 1 ETH, 21000 gas, 20 Gwei
+	txData := types.NewTransaction(
+		1,
+		targetAddr,
+		big.NewInt(1000000000000000000),
+		21000,
+		big.NewInt(20000000000),
+		nil,
+	)
+
+	signer := types.NewLondonSigner(big.NewInt(1))
+	signedTx, err := types.SignTx(txData, signer, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sigV, sigR, sigS := signedTx.RawSignatureValues()
+	txHash := signedTx.Hash().Hex()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int           `json:"id"`
+			Method string        `json:"method"`
+			Params []interface{} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		var result interface{}
+
+		switch req.Method {
+		case "eth_chainId":
+			result = "0x1" // Chain ID 1
+		case "eth_getBlockByNumber":
+			reqBlockNum, _ := req.Params[0].(string)
+			isFull, _ := req.Params[1].(bool)
+
+			// Simulate Reorg:
+			// "latest" -> returns block 100 (0x64) header
+			// "0x64" -> returns null (missing/reorged body)
+			// "0x63" -> returns block 99 with tx
+
+			if reqBlockNum == "0x64" && isFull {
+				// Simulate missing block body for the supposed head
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      req.ID,
+					"result":  nil,
+				}
+				json.NewEncoder(w).Encode(resp)
+				return
+			}
+
+			blockHeader := map[string]interface{}{
+				"number":           "0x64", // Default to 100 for "latest"
+				"hash":             "0x0000000000000000000000000000000000000000000000000000000000000100",
+				"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000099",
+				"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+				"timestamp":        "0x5f5e1000",
+				"miner":            "0x0000000000000000000000000000000000000000",
+				"gasLimit":         "0x1",
+				"gasUsed":          "0x0",
+				"difficulty":       "0x0",
+				"extraData":        "0x",
+				"mixHash":          "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"nonce":            "0x0000000000000000",
+				"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"transactionsRoot": "0x0000000000000000000000000000000000000000000000000000000000000001",
+				"logsBloom":        "0x" + strings.Repeat("00", 256),
+				"transactions":     []interface{}{},
+			}
+
+			if reqBlockNum == "0x63" {
+				blockHeader["number"] = "0x63"
+				if isFull {
+					blockHeader["transactions"] = []map[string]interface{}{
+						{
+							"from":             fromAddress,
+							"to":               targetAddress,
+							"hash":             txHash,
+							"value":            "0xde0b6b3a7640000", // 1 ETH
+							"gas":              "0x5208",            // 21000
+							"gasPrice":         "0x4a817c800",       // 20 Gwei
+							"nonce":            "0x1",
+							"blockNumber":      "0x63",
+							"blockHash":        "0x0000000000000000000000000000000000000000000000000000000000000099",
+							"transactionIndex": "0x0",
+							"input":            "0x",
+							"v":                "0x" + sigV.Text(16),
+							"r":                "0x" + sigR.Text(16),
+							"s":                "0x" + sigS.Text(16),
+							"type":             "0x0",
+						},
+					}
+				} else {
+					blockHeader["transactionsRoot"] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+				}
+			} else if reqBlockNum != "" && reqBlockNum != "latest" {
+				blockHeader["number"] = reqBlockNum
+				blockHeader["transactionsRoot"] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+			}
+
+			result = blockHeader
+		default:
+			result = "0x0"
+		}
+
+		resp := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result":  result,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// Execute
+	cmd := fetchTransactions(targetAddress, []string{server.URL}, 4)
+	msg := cmd()
+
+	// Assert
+	txsMsg, ok := msg.(txsMsg)
+	if !ok {
+		t.Fatalf("Expected txsMsg, got %T", msg)
+	}
+
+	if txsMsg.err != nil {
+		t.Fatalf("fetchTransactions returned error: %v", txsMsg.err)
+	}
+
+	if len(txsMsg.txs) != 1 {
+		t.Fatalf("Expected 1 transaction, got %d", len(txsMsg.txs))
+	}
+
+	if txsMsg.txs[0].BlockNumber != 99 {
+		t.Errorf("Expected transaction from block 99, got %d", txsMsg.txs[0].BlockNumber)
+	}
+}
+
+func TestSubscribeToNewHeads(t *testing.T) {
+	// Mock WebSocket Server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		c, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+
+		for {
+			var msg map[string]interface{}
+			if err := c.ReadJSON(&msg); err != nil {
+				break
+			}
+			method, _ := msg["method"].(string)
+			if method == "eth_subscribe" {
+				// 1. Send Subscription ID
+				c.WriteJSON(map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      msg["id"],
+					"result":  "0x123456",
+				})
+
+				// 2. Send Notification (New Head)
+				c.WriteJSON(map[string]interface{}{
+					"jsonrpc": "2.0",
+					"method":  "eth_subscription",
+					"params": map[string]interface{}{
+						"subscription": "0x123456",
+						"result": map[string]interface{}{
+							"number":           "0x100",
+							"hash":             "0x0000000000000000000000000000000000000000000000000000000000000100",
+							"parentHash":       "0x00000000000000000000000000000000000000000000000000000000000000ff",
+							"timestamp":        "0x5f5e1000",
+							"miner":            "0x0000000000000000000000000000000000000000",
+							"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
+							"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
+							"transactionsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+							"logsBloom":        "0x" + strings.Repeat("00", 256),
+							"gasLimit":         "0x1",
+							"gasUsed":          "0x0",
+							"difficulty":       "0x0",
+							"extraData":        "0x",
+							"mixHash":          "0x0000000000000000000000000000000000000000000000000000000000000000",
+							"nonce":            "0x0000000000000000",
+							"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+						},
+					},
+				})
+			}
+		}
+	}))
+	defer server.Close()
+
+	// Convert http:// to ws://
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	headers := make(chan *types.Header)
+	sub, err := subscribeToNewHeads(context.Background(), wsURL, headers)
+	if err != nil {
+		t.Fatalf("subscribeToNewHeads failed: %v", err)
+	}
+	defer sub.Unsubscribe()
+
+	select {
+	case h := <-headers:
+		if h.Number.Uint64() != 256 { // 0x100
+			t.Errorf("Expected block number 256, got %d", h.Number.Uint64())
+		}
+	case err := <-sub.Err():
+		t.Fatalf("Subscription error: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for header")
 	}
 }
