@@ -969,7 +969,7 @@ func BenchmarkFetchChainData(b *testing.B) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -1158,7 +1158,7 @@ func TestFetchTransactions_Reorg(t *testing.T) {
 					"id":      req.ID,
 					"result":  nil,
 				}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 				return
 			}
 
@@ -1222,7 +1222,7 @@ func TestFetchTransactions_Reorg(t *testing.T) {
 			"id":      req.ID,
 			"result":  result,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 

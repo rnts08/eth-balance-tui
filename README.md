@@ -2,6 +2,7 @@
 
 ![Release Status](https://github.com/rnts08/eth-balance-tui/actions/workflows/release.yml/badge.svg)
 ![Test Status](https://github.com/rnts08/eth-balance-tui/actions/workflows/test.yml/badge.svg)
+![Format Status](https://github.com/rnts08/eth-balance-tui/actions/workflows/format.yml/badge.svg)
 
 A comprehensive, terminal-based UI for monitoring balances and transactions on Ethereum and other EVM-compatible chains.
 A terminal user interface for tracking Ethereum and EVM chain balances.
