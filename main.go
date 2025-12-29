@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -694,7 +695,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err := restoreLastBackup(m.configPath); err != nil {
 					m.statusMessage = fmt.Sprintf("Restore failed: %v", err)
 				} else {
-					addrs, chains, idx, gCfg, err := loadConfig(m.configPath)
+					addrs, chains, idx, gCfg, err := loadConfigFromFile(m.configPath)
 					if err != nil {
 						m.statusMessage = fmt.Sprintf("Reload failed: %v", err)
 					} else {
@@ -3138,14 +3139,19 @@ func getConfigPath(customPath string) (string, error) {
 	return filepath.Join(home, configFileName), nil
 }
 
-func loadConfig(path string) ([]AddressConfig, []ChainConfig, int, GlobalConfig, error) {
-	data, err := os.ReadFile(path)
+func loadConfigFromFile(path string) ([]AddressConfig, []ChainConfig, int, GlobalConfig, error) {
+	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return []AddressConfig{}, nil, 0, GlobalConfig{PrivacyTimeoutSeconds: 60, FiatDecimals: 2, TokenDecimals: 2}, nil
 	}
 	if err != nil {
 		return nil, nil, 0, GlobalConfig{}, err
 	}
+	defer f.Close()
+	return loadConfig(f)
+}
+
+func loadConfig(r io.Reader) ([]AddressConfig, []ChainConfig, int, GlobalConfig, error) {
 	var cfg struct {
 		Addresses                json.RawMessage `json:"addresses"`
 		RPCURLs                  []string        `json:"rpc_urls"` // Legacy
@@ -3157,13 +3163,14 @@ func loadConfig(path string) ([]AddressConfig, []ChainConfig, int, GlobalConfig,
 		AutoCycleEnabled         *bool           `json:"auto_cycle_enabled"`
 		AutoCycleIntervalSeconds *int            `json:"auto_cycle_interval_seconds"`
 	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.NewDecoder(r).Decode(&cfg); err != nil {
 		return nil, nil, 0, GlobalConfig{}, err
 	}
 
 	var addresses []AddressConfig
 	// Try unmarshal as []AddressConfig
 	if err := json.Unmarshal(cfg.Addresses, &addresses); err != nil {
+		addresses = nil
 		// Try unmarshal as []string (legacy)
 		var strAddrs []string
 		if err2 := json.Unmarshal(cfg.Addresses, &strAddrs); err2 == nil {
@@ -3331,7 +3338,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	savedAddrs, savedChains, activeChainIdx, savedGlobalCfg, err := loadConfig(path)
+	savedAddrs, savedChains, activeChainIdx, savedGlobalCfg, err := loadConfigFromFile(path)
 	if err != nil {
 		fmt.Printf("Error loading config from %s: %v\n", path, err)
 		os.Exit(1)

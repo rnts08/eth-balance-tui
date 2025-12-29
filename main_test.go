@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -248,6 +249,7 @@ func TestFetchChainData_Integration(t *testing.T) {
 				"number":           "0x1000",
 				"hash":             "0x0000000000000000000000000000000000000000000000000000000000000001",
 				"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000002",
+				"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
 				"timestamp":        "0x5f5e1000",
 				"miner":            "0x0000000000000000000000000000000000000000",
 				"gasLimit":         "0x1",
@@ -445,6 +447,7 @@ func TestFetchChainData_RPCFailover(t *testing.T) {
 				"number":           "0x1000",
 				"hash":             "0x0000000000000000000000000000000000000000000000000000000000000001",
 				"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000002",
+				"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
 				"timestamp":        "0x5f5e1000",
 				"miner":            "0x0000000000000000000000000000000000000000",
 				"gasLimit":         "0x1",
@@ -535,6 +538,7 @@ func TestFetchTransactions_Integration(t *testing.T) {
 				"number":           "0x1000",
 				"hash":             "0x0000000000000000000000000000000000000000000000000000000000000001",
 				"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000002",
+				"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
 				"timestamp":        "0x5f5e1000",
 				"miner":            "0x0000000000000000000000000000000000000000",
 				"gasLimit":         "0x1",
@@ -624,23 +628,9 @@ func TestFetchTransactions_Integration(t *testing.T) {
 }
 
 func TestLoadConfig_Malformed(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "malformed_config_*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpfile.Name()) // clean up
-
-	// Write malformed JSON
-	if _, err := tmpfile.Write([]byte(`{ "addresses": [`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := tmpfile.Close(); err != nil {
-		t.Fatal(err)
-	}
-
 	// Attempt to load
-	_, _, _, _, err = loadConfig(tmpfile.Name())
+	reader := strings.NewReader(`{ "addresses": [`)
+	_, _, _, _, err := loadConfig(reader)
 	if err == nil {
 		t.Error("Expected error loading malformed config, got nil")
 	}
@@ -671,7 +661,7 @@ func TestSaveConfig(t *testing.T) {
 	}
 
 	// Load back to verify
-	loadedAddrs, loadedChains, loadedIdx, loadedGlobal, err := loadConfig(tmpPath)
+	loadedAddrs, loadedChains, loadedIdx, loadedGlobal, err := loadConfigFromFile(tmpPath)
 	if err != nil {
 		t.Fatalf("loadConfig failed: %v", err)
 	}
@@ -692,6 +682,7 @@ func TestSaveConfig(t *testing.T) {
 }
 
 func TestLoadConfig_TableDriven(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		jsonContent string
@@ -780,21 +771,11 @@ func TestLoadConfig_TableDriven(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture range variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
-			tmpfile, err := os.CreateTemp("", "table_test_*.json")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(tmpfile.Name())
-
-			if _, err := tmpfile.Write([]byte(tt.jsonContent)); err != nil {
-				t.Fatal(err)
-			}
-			if err := tmpfile.Close(); err != nil {
-				t.Fatal(err)
-			}
-
-			addrs, chains, _, gCfg, err := loadConfig(tmpfile.Name())
+			t.Parallel()
+			reader := strings.NewReader(tt.jsonContent)
+			addrs, chains, _, gCfg, err := loadConfig(reader)
 
 			if tt.expectError {
 				if err == nil {
@@ -837,5 +818,110 @@ func TestSaveConfig_PermissionError(t *testing.T) {
 	err = saveConfig(addresses, chains, 0, globalCfg, configPath)
 	if err == nil {
 		t.Error("Expected permission error, got nil")
+	}
+}
+
+func BenchmarkFetchChainData(b *testing.B) {
+	// Mock Server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		var result interface{}
+		switch req.Method {
+		case "eth_getBlockByNumber":
+			// Minimal header fields required by go-ethereum to avoid errors
+			result = map[string]interface{}{
+				"number":       "0x1000",
+				"hash":         "0x0000000000000000000000000000000000000000000000000000000000000001",
+				"parentHash":   "0x0000000000000000000000000000000000000000000000000000000000000002",
+				"timestamp":    "0x5f5e1000",
+				"miner":        "0x0000000000000000000000000000000000000000",
+				"gasLimit":     "0x1",
+				"gasUsed":      "0x0",
+				"difficulty":   "0x0",
+				"extraData":    "0x",
+				"mixHash":      "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"nonce":        "0x0000000000000000",
+				"stateRoot":    "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"receiptsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+				"logsBloom":    "0x" + strings.Repeat("00", 256),
+			}
+		case "eth_getBalance":
+			result = "0x22B1C8C1227A0000"
+		case "eth_call":
+			result = "0x000000000000000000000000000000000000000000000000000000001dcd6500"
+		default:
+			result = "0x0"
+		}
+
+		resp := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result":  result,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	chain := ChainConfig{
+		Name:    "BenchChain",
+		RPCURLs: []string{server.URL},
+		Tokens:  []TokenConfig{{Symbol: "TEST", Address: "0x1234567890123456789012345678901234567890", Decimals: 6}},
+	}
+	accounts := []*accountState{{address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"}}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cmd := fetchChainData(chain, accounts)
+		cmd()
+	}
+}
+
+func FuzzLoadConfig(f *testing.F) {
+	// Seed corpus with a valid JSON structure
+	f.Add([]byte(`{"addresses":[{"address":"0x123"}],"chains":[{"name":"Eth","rpc_urls":["http://eth"]}]}`))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// Ensure it doesn't panic on random input
+		reader := bytes.NewReader(data)
+		_, _, _, _, _ = loadConfig(reader)
+	})
+}
+
+func TestLoadConfig_LegacyMigration(t *testing.T) {
+	// Legacy config with:
+	// 1. "addresses" as []string (instead of []AddressConfig)
+	// 2. "rpc_urls" at root (instead of inside "chains")
+	legacyJSON := `{
+		"addresses": ["0x123", "0x456"],
+		"rpc_urls": ["https://legacy-rpc.com"],
+		"selected_chain": "Ethereum"
+	}`
+
+	reader := strings.NewReader(legacyJSON)
+	addrs, chains, idx, _, err := loadConfig(reader)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+
+	// Verify Address Migration
+	if len(addrs) != 2 || addrs[0].Address != "0x123" || addrs[1].Address != "0x456" {
+		t.Errorf("Address migration failed. Got: %v", addrs)
+	}
+
+	// Verify Chain Migration
+	if len(chains) != 1 {
+		t.Fatalf("Expected 1 chain, got %d", len(chains))
+	}
+	if chains[0].Name != "Ethereum" || chains[0].RPCURLs[0] != "https://legacy-rpc.com" {
+		t.Errorf("Chain migration failed. Got: %+v", chains[0])
+	}
+
+	if idx != 0 {
+		t.Errorf("Expected selected index 0, got %d", idx)
 	}
 }
