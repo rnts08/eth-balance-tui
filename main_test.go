@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +20,7 @@ func TestTruncateString(t *testing.T) {
 	}{
 		{"hello world", 5, "he..."},
 		{"short", 10, "short"},
-		{"exact", 5, "ex..."},
+		{"exact", 5, "exact"},
 		{"", 5, ""},
 		{"abc", 2, "ab"}, // Test safety fix for small widths
 		{"abc", 3, "abc"},
@@ -257,7 +259,7 @@ func TestFetchChainData_Integration(t *testing.T) {
 				"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"transactionsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
-				"logsBloom":        "0x00",
+				"logsBloom":        "0x" + strings.Repeat("00", 256),
 			}
 		case "eth_getBalance":
 			// Return 2.5 ETH: 2.5 * 10^18 = 2500000000000000000
@@ -454,7 +456,7 @@ func TestFetchChainData_RPCFailover(t *testing.T) {
 				"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"transactionsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
-				"logsBloom":        "0x00",
+				"logsBloom":        "0x" + strings.Repeat("00", 256),
 			}
 		case "eth_getBalance":
 			result = "0x22B1C8C1227A0000" // 2.5 ETH
@@ -544,7 +546,7 @@ func TestFetchTransactions_Integration(t *testing.T) {
 				"stateRoot":        "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"receiptsRoot":     "0x0000000000000000000000000000000000000000000000000000000000000000",
 				"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-				"logsBloom":        "0x00",
+				"logsBloom":        "0x" + strings.Repeat("00", 256),
 			}
 
 			if isFull {
@@ -618,5 +620,222 @@ func TestFetchTransactions_Integration(t *testing.T) {
 	}
 	if tx.GasPrice != "20.00 Gwei" {
 		t.Errorf("Expected gas price '20.00 Gwei', got '%s'", tx.GasPrice)
+	}
+}
+
+func TestLoadConfig_Malformed(t *testing.T) {
+	// Create a temporary file
+	tmpfile, err := os.CreateTemp("", "malformed_config_*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name()) // clean up
+
+	// Write malformed JSON
+	if _, err := tmpfile.Write([]byte(`{ "addresses": [`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to load
+	_, _, _, _, err = loadConfig(tmpfile.Name())
+	if err == nil {
+		t.Error("Expected error loading malformed config, got nil")
+	}
+}
+
+func TestSaveConfig(t *testing.T) {
+	// Create a temporary file
+	tmpfile, err := os.CreateTemp("", "test_save_config_*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpPath := tmpfile.Name()
+	tmpfile.Close()          // Close immediately, saveConfig will overwrite it
+	defer os.Remove(tmpPath) // Ensure cleanup
+
+	// Sample Data
+	addresses := []AddressConfig{{Address: "0x123", Name: "Test"}}
+	chains := []ChainConfig{{
+		Name:    "Ethereum",
+		RPCURLs: []string{"http://localhost:8545"},
+	}}
+	globalCfg := GlobalConfig{PrivacyTimeoutSeconds: 120}
+
+	// Save
+	err = saveConfig(addresses, chains, 0, globalCfg, tmpPath)
+	if err != nil {
+		t.Fatalf("saveConfig failed: %v", err)
+	}
+
+	// Load back to verify
+	loadedAddrs, loadedChains, loadedIdx, loadedGlobal, err := loadConfig(tmpPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+
+	// Assertions
+	if len(loadedAddrs) != 1 || loadedAddrs[0].Address != "0x123" {
+		t.Errorf("Address mismatch")
+	}
+	if len(loadedChains) != 1 || loadedChains[0].Name != "Ethereum" {
+		t.Errorf("Chain mismatch")
+	}
+	if loadedIdx != 0 {
+		t.Errorf("Selected index mismatch")
+	}
+	if loadedGlobal.PrivacyTimeoutSeconds != 120 {
+		t.Errorf("Global config mismatch")
+	}
+}
+
+func TestLoadConfig_TableDriven(t *testing.T) {
+	tests := []struct {
+		name        string
+		jsonContent string
+		expectError bool
+		validate    func(*testing.T, []AddressConfig, []ChainConfig, GlobalConfig)
+	}{
+		{
+			name: "Valid Modern Config",
+			jsonContent: `{
+				"addresses": [{"address": "0x123", "name": "Main"}],
+				"chains": [{"name": "Eth", "rpc_urls": ["http://eth"]}],
+				"selected_chain": "Eth",
+				"privacy_timeout_seconds": 100
+			}`,
+			expectError: false,
+			validate: func(t *testing.T, addrs []AddressConfig, chains []ChainConfig, g GlobalConfig) {
+				if len(addrs) != 1 || addrs[0].Address != "0x123" {
+					t.Errorf("Address mismatch")
+				}
+				if len(chains) != 1 || chains[0].Name != "Eth" {
+					t.Errorf("Chain mismatch")
+				}
+				if g.PrivacyTimeoutSeconds != 100 {
+					t.Errorf("Global config mismatch")
+				}
+			},
+		},
+		{
+			name: "Legacy Addresses (String Array)",
+			jsonContent: `{
+				"addresses": ["0x123", "0x456"],
+				"chains": [{"name": "Eth", "rpc_urls": ["http://eth"]}]
+			}`,
+			expectError: false,
+			validate: func(t *testing.T, addrs []AddressConfig, chains []ChainConfig, g GlobalConfig) {
+				if len(addrs) != 2 {
+					t.Errorf("Expected 2 addresses, got %d", len(addrs))
+				}
+				if addrs[0].Address != "0x123" || addrs[1].Address != "0x456" {
+					t.Errorf("Address content mismatch")
+				}
+			},
+		},
+		{
+			name: "Legacy Chains (Root RPC URLs)",
+			jsonContent: `{
+				"addresses": [{"address": "0x123"}],
+				"rpc_urls": ["http://legacy-rpc"]
+			}`,
+			expectError: false,
+			validate: func(t *testing.T, addrs []AddressConfig, chains []ChainConfig, g GlobalConfig) {
+				if len(chains) != 1 {
+					t.Fatalf("Expected 1 chain from legacy migration, got %d", len(chains))
+				}
+				if chains[0].Name != "Ethereum" {
+					t.Errorf("Expected default name 'Ethereum', got %s", chains[0].Name)
+				}
+				if len(chains[0].RPCURLs) != 1 || chains[0].RPCURLs[0] != "http://legacy-rpc" {
+					t.Errorf("RPC URL mismatch")
+				}
+			},
+		},
+		{
+			name:        "Malformed JSON",
+			jsonContent: `{ "addresses": [ unclosed_array`,
+			expectError: true,
+			validate:    nil,
+		},
+		{
+			name: "Partial Config (Defaults)",
+			jsonContent: `{
+				"addresses": [{"address": "0x123"}],
+				"chains": [{"name": "Eth", "rpc_urls": ["http://eth"]}]
+			}`,
+			expectError: false,
+			validate: func(t *testing.T, addrs []AddressConfig, chains []ChainConfig, g GlobalConfig) {
+				// Check defaults
+				if g.PrivacyTimeoutSeconds != 60 {
+					t.Errorf("Expected default privacy timeout 60, got %d", g.PrivacyTimeoutSeconds)
+				}
+				if g.FiatDecimals != 2 {
+					t.Errorf("Expected default fiat decimals 2, got %d", g.FiatDecimals)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpfile, err := os.CreateTemp("", "table_test_*.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(tmpfile.Name())
+
+			if _, err := tmpfile.Write([]byte(tt.jsonContent)); err != nil {
+				t.Fatal(err)
+			}
+			if err := tmpfile.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			addrs, chains, _, gCfg, err := loadConfig(tmpfile.Name())
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if tt.validate != nil {
+					tt.validate(t, addrs, chains, gCfg)
+				}
+			}
+		})
+	}
+}
+
+func TestSaveConfig_PermissionError(t *testing.T) {
+	// Create a temp dir
+	tmpDir, err := os.MkdirTemp("", "readonly_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Make it read-only
+	if err := os.Chmod(tmpDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	// Ensure we restore permissions so cleanup works
+	defer os.Chmod(tmpDir, 0700)
+
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	// Sample Data
+	addresses := []AddressConfig{{Address: "0x123"}}
+	chains := []ChainConfig{{Name: "Eth", RPCURLs: []string{"http://eth"}}}
+	globalCfg := GlobalConfig{}
+
+	err = saveConfig(addresses, chains, 0, globalCfg, configPath)
+	if err == nil {
+		t.Error("Expected permission error, got nil")
 	}
 }

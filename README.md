@@ -7,30 +7,33 @@ A comprehensive, terminal-based UI for monitoring balances and transactions on E
 A terminal user interface for tracking Ethereum and EVM chain balances.
 
 ![Screenshot](https://user-images.githubusercontent.com/12345/screenshot.png) <!-- Placeholder for screenshot -->
+
 ## Development
 
 ## Features
+
 ### Prerequisites
+
 - Go 1.21+
 - Make
 
-*   **Multi-Address & Multi-Chain:** Monitor multiple wallet addresses across various configured EVM chains.
-*   **Real-time Data:** Fetches native currency and ERC-20 token balances, USD values (via CoinGecko), and current gas prices.
-*   **Transaction History:** View recent incoming and outgoing transactions for the selected address, with filtering capabilities.
-*   **Interactive TUI:**
-    *   Add, remove, and edit addresses and chains directly from the UI.
-    *   Add and remove ERC-20 tokens for each chain, with automatic metadata fetching (symbol, decimals).
-    *   Detailed views for individual accounts and transactions.
-*   **Network & Gas Monitoring:**
-    *   A dedicated "Network Status" view to check RPC latency and health.
-    *   A "Gas Tracker" view with a historical graph and multiple time ranges (30m, 1h, 6h, 24h).
-*   **Privacy & Automation:**
-    *   **Privacy Mode:** Obfuscates all sensitive values and addresses, with an automatic inactivity timeout.
-    *   **Auto-Cycle:** Automatically cycle through monitored addresses at a configurable interval, with a visual countdown and pause-on-interaction.
-*   **Robust & Configurable:**
-    *   Highly configurable via a `config.json` file.
-    *   Intelligent RPC handling with cooldowns and automatic prioritization based on latency.
-    *   Configuration testing, validation, and backup/restore functionality.
+- **Multi-Address & Multi-Chain:*- Monitor multiple wallet addresses across various configured EVM chains.
+- **Real-time Data:*- Fetches native currency and ERC-20 token balances, USD values (via CoinGecko), and current gas prices.
+- **Transaction History:*- View recent incoming and outgoing transactions for the selected address, with filtering capabilities.
+- **Interactive TUI:**
+  - Add, remove, and edit addresses and chains directly from the UI.
+  - Add and remove ERC-20 tokens for each chain, with automatic metadata fetching (symbol, decimals).
+  - Detailed views for individual accounts and transactions.
+- **Network & Gas Monitoring:**
+  - A dedicated "Network Status" view to check RPC latency and health.
+  - A "Gas Tracker" view with a historical graph and multiple time ranges (30m, 1h, 6h, 24h).
+- **Privacy & Automation:**
+  - **Privacy Mode:*- Obfuscates all sensitive values and addresses, with an automatic inactivity timeout.
+  - **Auto-Cycle:*- Automatically cycle through monitored addresses at a configurable interval, with a visual countdown and pause-on-interaction.
+- **Robust & Configurable:**
+  - Highly configurable via a `config.json` file.
+  - Intelligent RPC handling with cooldowns and automatic prioritization based on latency.
+  - Configuration testing, validation, and backup/restore functionality.
 
 ## Installation & Usage
 
@@ -39,6 +42,7 @@ A terminal user interface for tracking Ethereum and EVM chain balances.
 Ensure you have Go and `make` installed. A `Makefile` is provided to simplify common tasks.
 
 ### Building
+
 ```bash
 git clone https://github.com/rnts08/eth-balance-tui.git
 cd eth-balance-tui
@@ -47,40 +51,10 @@ make build
 
 ### Configuration
 
-1.  Create a `config.json` file. You can place it in your home directory as `~/.eth-balance-tui.json` or provide a path at runtime using the `-config` flag.
-2.  Use the example below as a starting point.
+1. Create a `config.json` file. You can place it in your home directory as `~/.eth-balance-tui.json` or provide a path at runtime using the `-config` flag.
+2. Use the example below as a starting point.
 
-### Running the Application
-
-### Running
-```bash
-./eth-balance-tui
-make run
-```
-
-Or with a custom config path:
-## Release Management
-
-```bash
-./eth-balance-tui -config /path/to/your/config.json
-```
-This project uses Semantic Versioning (Major.Minor.Patch).
-
-### Testing the Configuration
-### Bumping Version
-To create a new release, ensure your working directory is clean (no uncommitted changes), then run one of the following commands:
-
-You can validate your `config.json` file, test RPC connectivity, and automatically populate missing `chain_id` fields by running the application with the `-test` flag.
-
-```bash
-./eth-balance-tui -test
-```
-# Bump patch version (e.g., 1.0.0 -> 1.0.1)
-make bump part=patch
-
-## Configuration (`config.json`)
-# Bump minor version (e.g., 1.0.0 -> 1.1.0)
-make bump part=minor
+### Configuration example
 
 The application is configured using a JSON file. Here is an example structure:
 
@@ -123,35 +97,42 @@ The application is configured using a JSON file. Here is an example structure:
   "auto_cycle_enabled": false,
   "auto_cycle_interval_seconds": 15
 }
-# Bump major version (e.g., 1.0.0 -> 2.0.0)
-make bump part=major
 ```
 
-*   **`addresses`**: A list of wallet addresses to monitor. The `name` field is an optional tag.
-*   **`chains`**: A list of EVM chains.
-    *   `name`: The display name for the chain.
-    *   `rpc_urls`: A list of RPC endpoints. The app will prioritize them based on latency and automatically failover.
-    *   `symbol`: The native currency symbol (e.g., "ETH").
-    *   `coingecko_id`: The ID from CoinGecko's API for fetching price data.
-    *   `chain_id` (optional): The chain's ID, used for validation. Can be auto-populated with `-test`.
-    *   `explorer_url` (optional): The base URL for a block explorer, used for opening transactions in a browser.
-    *   `tokens`: A list of ERC-20 tokens to monitor on this chain.
-*   **`selected_chain`**: The name of the chain to display on startup.
-*   **`privacy_timeout_seconds`**: Automatically re-enable Privacy Mode after this many seconds of inactivity. Set to `0` to disable.
-*   **`fiat_decimals`**: Number of decimal places to show for fiat values (e.g., USD).
-*   **`token_decimals`**: Number of decimal places to show for token and native currency balances.
-*   **`auto_cycle_enabled`**: Set to `true` to automatically cycle through addresses.
-*   **`auto_cycle_interval_seconds`**: The delay between each address switch when auto-cycle is enabled.
-This command will:
-1. Verify the working directory is clean.
-2. Increment the version number in the `VERSION` file.
-3. Commit the change.
-4. Create a git tag (e.g., `v1.0.1`).
-5. Push the commit and the tag to the remote repository.
+- **`addresses`**: A list of wallet addresses to monitor. The `name` field is an optional tag.
+- **`chains`**: A list of EVM chains.
+  - `name`: The display name for the chain.
+  - `rpc_urls`: A list of RPC endpoints. The app will prioritize them based on latency and automatically failover.
+  - `symbol`: The native currency symbol (e.g., "ETH").
+  - `coingecko_id`: The ID from CoinGecko's API for fetching price data.
+  - `chain_id` (optional): The chain's ID, used for validation. Can be auto-populated with `-test`.
+    - `explorer_url` (optional): The base URL for a block explorer, used for opening transactions in a browser.
+    - `tokens`: A list of ERC-20 tokens to monitor on this chain.
+- **`selected_chain`**: The name of the chain to display on startup.
+- **`privacy_timeout_seconds`**: Automatically re-enable Privacy Mode after this many seconds of inactivity. Set to `0` to disable.
+- **`fiat_decimals`**: Number of decimal places to show for fiat values (e.g., USD).
+- **`token_decimals`**: Number of decimal places to show for token and native currency balances.
+- **`auto_cycle_enabled`**: Set to `true` to automatically cycle through addresses.
+- **`auto_cycle_interval_seconds`**: The delay between each address switch when auto-cycle is enabled.
+
+### Running the Application
+
+### Running
+
+```bash
+./eth-balance-tui
+```
+
+Or with a custom config path:
+
+```bash
+./eth-balance-tui -config /path/to/your/config.json
+```
 
 ## Keybindings
 
 ### Global / Main View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `q`, `esc` | Quit the application. |
@@ -179,6 +160,7 @@ This command will:
 | `X` | Export the current configuration to a new file. |
 
 ### Summary View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `s`, `q`, `esc` | Return to the main view. |
@@ -188,6 +170,7 @@ This command will:
 | `b` | Sort by active chain balance. |
 
 ### Transaction List View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `q`, `esc` | Return to the main view. |
@@ -199,12 +182,14 @@ This command will:
 | `enter` | View details for the selected transaction. |
 
 ### Transaction Detail View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `q`, `esc` | Return to the transaction list. |
 | `o` | **O**pen the transaction in the chain's block explorer. |
 
 ### Gas Tracker View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `G`, `q`, `esc` | Return to the main view. |
@@ -212,6 +197,7 @@ This command will:
 | `<` / `>` | Change the time range. |
 
 ### Network Status View
+
 | Key(s) | Action |
 | :--- | :--- |
 | `N`, `q`, `esc` | Return to the main view. |
@@ -219,6 +205,7 @@ This command will:
 | `R` | Clear all RPC cooldowns. |
 
 ### Detail View (per-account)
+
 | Key(s) | Action |
 | :--- | :--- |
 | `enter`, `q`, `esc` | Return to the main view. |
@@ -226,6 +213,7 @@ This command will:
 | `↑` / `↓` | Scroll the view. |
 
 ### Management & Input Screens
+
 | Key(s) | Action |
 | :--- | :--- |
 | `q`, `esc` | Cancel and return to the previous view. |
@@ -238,15 +226,23 @@ This project is open source and available under the GNU License.
 
 ## Tips and appreciations
 
-***ETH/ERC20:*** 0x968cC7D93c388614f620Ef812C5fdfe64029B92d
+***ETH/ERC20:**- 0x968cC7D93c388614f620Ef812C5fdfe64029B92d
 
-***SOL:*** 68L4XzSbRUaNE4UnxEd8DweSWEoiMQi6uygzERZLbXDw
+***SOL:**- 68L4XzSbRUaNE4UnxEd8DweSWEoiMQi6uygzERZLbXDw
 
-***BTC:*** bc1qkmzc6d49fl0edyeynezwlrfqv486nmk6p5pmta
+***BTC:**- bc1qkmzc6d49fl0edyeynezwlrfqv486nmk6p5pmta
 
 ### Automated Release
+
+See RELEASE.md for more information, but here is the short version:
+
+```bash
+make bump part={patch|minor|major}
+```
+
 Pushing the tag triggers a GitHub Action workflow that:
-1. Runs unit tests and configuration tests.
-2. Verifies the tag matches the `VERSION` file.
-3. Cross-compiles binaries for Linux, Windows, and macOS.
-4. Creates a GitHub Release with the binaries and an automatically generated changelog.
+
+  1. Runs unit tests and configuration tests.
+  2. Verifies the tag matches the `VERSION` file.
+  3. Cross-compiles binaries for Linux, Windows, and macOS.
+  4. Creates a GitHub Release with the binaries and an automatically generated changelog.
